@@ -22,7 +22,7 @@ export const taskColumns: ColumnDef<Task>[] = [
 	{
 		accessorKey: "priority",
 		header: "Priority",
-		cell: ({ row }) => {
+		cell: ({ row }) => { 
 			const value = row.original.priority;
 			return (
 				<Badge
