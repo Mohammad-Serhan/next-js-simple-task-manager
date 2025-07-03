@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
 	useReactTable,
 	getCoreRowModel,
@@ -17,20 +17,35 @@ type Props = {
 export function TaskTable({ initialData }: Props) {
 	const [data, setData] = useState<Task[]>(initialData);
 	const [editingId, setEditingId] = useState<number | null>(null);
-	const [editRow, setEditRow] = useState<Partial<Task>>({});
-	const [newTask, setNewTask] = useState<Task>({
-		id: Date.now(),
+	const [editRow, setEditRow] = useState<Partial<Task>>({}); 
+	const [newTask, setNewTask] = useState<Omit<Task, "id">>({
 		title: "",
 		description: "",
 		status: "Pending",
 		priority: "Low",
 	});
 
-	const handleAdd = () => {
+
+	const handleAdd = async () => {
 		if (!newTask.title.trim()) return;
-		setData((prev) => [...prev, { ...newTask, id: Date.now() }]);
+
+        const taskWithId = { ...newTask, id: Date.now() };
+
+		const res = await fetch("/api/tasks", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify(taskWithId),
+		});
+
+		if (!res.ok) {
+			console.error("Failed to add task");
+			return;
+		}
+
+		const created = await res.json();
+		setData((prev) => [...prev, created]);
+		// empty input for the next ADD
 		setNewTask({
-			id: Date.now(),
 			title: "",
 			description: "",
 			status: "Pending",
@@ -43,19 +58,56 @@ export function TaskTable({ initialData }: Props) {
 		setEditRow({ ...task });
 	};
 
-	const handleSave = (id: number) => {
+	const handleSave = async (id: number) => {
+		if (!editRow) return;
+
+		const res = await fetch(`/api/tasks/${id}`, {
+			method: "PUT",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify(editRow),
+		});
+
+		if (!res.ok) {
+			console.error("Failed to save task");
+			return;
+		}
+
+		const updated = await res.json();
 		setData((prev) =>
-			prev.map((task) =>
-				task.id === id ? { ...task, ...(editRow as Task) } : task
-			)
+			prev.map((task) => (task.id === id ? updated : task))
 		);
 		setEditingId(null);
 		setEditRow({});
 	};
 
-	const handleDelete = (id: number) => {
+	const handleDelete = async (id: number) => {
+		const confirm = window.confirm(
+			"Are you sure you want to delete this task?"
+		);
+		if (!confirm) return;
+
+		const res = await fetch(`/api/tasks/${id}`, {
+			method: "DELETE",
+		});
+
+		if (!res.ok) {
+			console.error("Failed to delete task");
+			return;
+		}
+
 		setData((prev) => prev.filter((task) => task.id !== id));
 	};
+
+	useEffect(() => {
+		const load = async () => {
+			const res = await fetch("/api/tasks", { cache: "no-store" });
+			const tasks = await res.json();
+			setData(tasks);
+		};
+
+		load();
+	}, []);
+    
 
 	const columns: ColumnDef<Task>[] = [
 		{
@@ -65,11 +117,16 @@ export function TaskTable({ initialData }: Props) {
 				const task = row.original;
 				return editingId === task.id ? (
 					<input
-						value={editRow.title || ""}
-						onChange={(e) =>
-							setEditRow({ ...editRow, title: e.target.value })
-						}
+						value={editRow?.title || ""}
+						onChange={(e) => {
+							if (!editRow) return;
+							setEditRow({
+								...editRow,
+								title: e.target.value,
+							});
+						}}
 						className="border px-2 py-1 w-full"
+						autoFocus
 					/>
 				) : (
 					task.title
@@ -81,19 +138,23 @@ export function TaskTable({ initialData }: Props) {
 			header: "Description",
 			cell: ({ row }) => {
 				const task = row.original;
-				return editingId === task.id ? (
-					<input
-						value={editRow.description || ""}
-						onChange={(e) =>
-							setEditRow({
-								...editRow,
-								description: e.target.value,
-							})
-						}
-						className="border px-2 py-1 w-full"
-					/>
-				) : (
-					task.description
+				return (
+					editingId === task.id ? (
+						<input
+                            value={editRow?.description || ""}
+                            onChange={(e) => {
+                                if (!editRow) return;
+                                setEditRow({
+                                    ...editRow,
+                                    description: e.target.value,
+                                });
+                            }}
+                            className="border px-2 py-1 w-full"
+                            
+                        />
+					) : (
+						task.description
+					)
 				);
 			},
 		},
@@ -102,28 +163,32 @@ export function TaskTable({ initialData }: Props) {
 			header: "Status",
 			cell: ({ row }) => {
 				const task = row.original;
-				return editingId === task.id ? (
-					<select
-						value={editRow.status}
-						onChange={(e) =>
-							setEditRow({
-								...editRow,
-								status: e.target.value as Task["status"],
-							})
-						}
-						className="border p-1 w-full"
-					>
-						<option value="Pending">Pending</option>
-						<option value="Completed">Completed</option>
-					</select>
-				) : (
-					<Badge
-						variant={
-							task.status === "Completed" ? "default" : "outline"
-						}
-					>
-						{task.status}
-					</Badge>
+				return (
+					editingId === task.id ? (
+						<select
+							value={editRow.status || ""}
+							onChange={(e) => {
+								if (!editRow) return;
+								setEditRow({
+									...editRow,
+									status: e.target.value as Task["status"],
+								});
+							}}
+						>
+							<option value="Pending">Pending</option>
+							<option value="Completed">Completed</option>
+						</select>
+					) : (
+						<Badge
+							variant={
+								task.status === "Completed"
+									? "default"
+									: "outline"
+							}
+						>
+							{task.status}
+						</Badge>
+					)
 				);
 			},
 		},
@@ -134,14 +199,14 @@ export function TaskTable({ initialData }: Props) {
 				const task = row.original;
 				return editingId === task.id ? (
 					<select
-						value={editRow.priority}
-						onChange={(e) =>
+						value={editRow.priority || ""}
+						onChange={(e) => {
+							if (!editRow) return;
 							setEditRow({
 								...editRow,
 								priority: e.target.value as Task["priority"],
-							})
-						}
-						className="border p-1 w-full"
+							});
+						}}
 					>
 						<option value="Low">Low</option>
 						<option value="Medium">Medium</option>
