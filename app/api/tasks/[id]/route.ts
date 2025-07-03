@@ -1,7 +1,6 @@
 import { supabase } from "@/app/lib/supabase";
 import { NextResponse } from "next/server";
 
-
 export async function PUT(
 	request: Request,
 	{ params }: { params: Promise<{ id: string }> }
@@ -20,7 +19,8 @@ export async function PUT(
 		if (error) throw error;
 
 		return NextResponse.json(data);
-	} catch (_error) {
+	} catch (error) {
+		console.error("Update error:", error);
 		return NextResponse.json(
 			{ error: "Task update failed" },
 			{ status: 500 }
@@ -42,7 +42,8 @@ export async function DELETE(
 			{ message: "Deleted successfully" },
 			{ status: 200 }
 		);
-	} catch (_error) {
+	} catch (error) {
+		console.error("Delete error:", error);
 		return NextResponse.json({ error: "Deletion failed" }, { status: 500 });
 	}
 }
